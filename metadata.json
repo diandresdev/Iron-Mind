@@ -1,0 +1,6 @@
+{
+  "name": "FitPulse - PWA de Entrenamiento Offline",
+  "description": "PWA de entrenamiento offline-first estilo Apple con periodización, tracker de 1RM, modo descarga, autoguardado en LocalStorage y exportación a IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

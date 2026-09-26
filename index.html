@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>FitPulse - PWA de Entrenamiento Offline</title>
+    <meta name="description" content="PWA de entrenamiento offline-first estilo Apple con periodización, tracker de 1RM, modo descarga, autoguardado en LocalStorage y exportación a IA." />
+    <meta property="og:title" content="FitPulse - PWA de Entrenamiento Offline" />
+    <meta property="og:description" content="PWA de entrenamiento offline-first estilo Apple con periodización, tracker de 1RM, modo descarga, autoguardado en LocalStorage y exportación a IA." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#1c1c1e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Pure Native Stylesheet -->
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <!-- Toast Notification (iOS Style) -->
+    <div id="ios-toast" class="ios-toast" role="status" aria-live="polite">
+      <span class="toast-icon">✓</span>
+      <span id="toast-text"></span>
+    </div>
+
+    <!-- App Container (Mobile First Shell) -->
+    <div class="app-container">
+      
+      <!-- 1. Header: Saludo Dinámico Personalizado & Avatar (Inyectado dinámicamente) -->
+      <header class="app-header">
+        <div class="header-meta">
+          <span id="fecha-header" class="date-badge"></span>
+          <h1 id="saludo-texto" class="greeting-title">
+            <span class="skeleton-text">Cargando...</span>
+          </h1>
+        </div>
+
+        <button type="button" id="btn-header-profile" class="profile-pill-btn" aria-label="Ver perfil">
+          <div id="avatar-circle" class="avatar-circle"></div>
+          <span id="avatar-name" class="avatar-label"></span>
+        </button>
+      </header>
+
+      <!-- Banner de Sesión en Curso (Visible si hay sesión activa) -->
+      <aside id="banner-sesion-activa" class="active-session-banner hidden" aria-live="polite">
+        <div class="banner-content">
+          <span class="pulse-indicator"></span>
+          <div class="banner-text-col">
+            <strong id="banner-sesion-titulo">Sesión Activa en Curso</strong>
+            <span id="banner-sesion-tiempo">⏱️ 00:00 • 0 kg registrados</span>
+          </div>
+        </div>
+        <button type="button" id="btn-banner-reanudar" class="btn-banner-action">Reanudar</button>
+      </aside>
+
+      <!-- 2. Main Content Views -->
+      <main class="main-content">
+        
+        <!-- PESTAÑA 1: INICIO (HOME) - RENDERIZADO INTELIGENTE SEGÚN PERIODIZACIÓN -->
+        <section id="view-inicio" class="view-section active">
+          
+          <!-- TARJETA GIGANTE CENTRAL: RUTINA DE HOY -->
+          <article class="hero-card" id="hero-card-container">
+            <div class="hero-card-header">
+              <span class="tag-badge">
+                <span class="dot"></span>
+                <span id="hero-tag-text">Bloque Activo</span>
+              </span>
+              <span class="hero-day-tag" id="hero-day-indicator">Hoy</span>
+            </div>
+
+            <h2 id="hero-rutina-titulo" class="hero-title">Sesión del Día</h2>
+            <p class="hero-subtitle" id="hero-rutina-subtitulo">Planificación del programa</p>
+
+            <!-- Métricas / Chips clave (Tonelaje Anterior de series efectivas) -->
+            <div class="metrics-row">
+              <div class="metric-box">
+                <span class="metric-icon">⏱️</span>
+                <span class="metric-value" id="val-tiempo-estimado">45 min</span>
+                <span class="metric-label">Tiempo</span>
+              </div>
+              <div class="metric-box" id="box-tonelaje-anterior">
+                <span class="metric-icon">📊</span>
+                <span class="metric-value" id="val-tonelaje-anterior">-- kg</span>
+                <span class="metric-label">Tonelaje Anterior</span>
+              </div>
+              <div class="metric-box">
+                <span class="metric-icon">🏋️</span>
+                <span class="metric-value" id="val-ejercicios-count">0</span>
+                <span class="metric-label">Ejercicios</span>
+              </div>
+            </div>
+
+            <!-- Lista de ejercicios del día -->
+            <div class="exercise-preview-list" id="exercise-preview-container">
+              <!-- Renderizado inteligente según bloque activo -->
+            </div>
+
+            <!-- BOTÓN PRIMARIO GIGANTE: INICIAR ENTRENAMIENTO -->
+            <button type="button" id="btn-iniciar-entrenamiento" class="btn-primary-giant">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span id="btn-iniciar-texto">Iniciar Entrenamiento</span>
+            </button>
+          </article>
+
+          <!-- EMPTY STATE: Si está fuera del rango de fechas del bloque o no hay bloque -->
+          <article class="empty-state-card hidden" id="empty-state-bloque">
+            <div class="empty-state-icon">📅</div>
+            <h3>Sin Bloque Activo</h3>
+            <p>No tienes un programa de entrenamiento vigente para la fecha de hoy. Configura un nuevo bloque con fechas de inicio y fin para comenzar.</p>
+            <button type="button" id="btn-crear-primer-bloque" class="btn-primary-giant">
+              Configurar Periodización
+            </button>
+          </article>
+
+          <!-- Acceso rápido a gestionar la periodización semanal -->
+          <div class="periodization-quick-card">
+            <div class="quick-card-info">
+              <span class="quick-card-badge" id="badge-nombre-bloque">Periodización</span>
+              <h4 id="quick-fechas-bloque">Configura tus días de entreno</h4>
+            </div>
+            <button type="button" id="btn-abrir-periodizacion" class="btn-secondary-sm">
+              Editar Bloque
+            </button>
+          </div>
+
+          <!-- Banner informativo offline-first -->
+          <div class="status-pill">
+            <span class="status-dot"></span>
+            <span>PWA Offline-First • LocalStorage Reactivo • Sin caídas</span>
+          </div>
+        </section>
+
+        <!-- PESTAÑA 2: CATÁLOGO EXTENSIBLE (20+ EJERCICIOS + AÑADIR EJERCICIO) -->
+        <section id="view-catalogo" class="view-section">
+          <div class="section-header-row">
+            <div>
+              <h2 class="section-title">Biblioteca de Ejercicios</h2>
+              <p class="section-description">Catálogo biomecánico con guía técnica de ejecución.</p>
+            </div>
+            <button type="button" id="btn-abrir-modal-nuevo-ejercicio" class="btn-action-round" aria-label="Añadir nuevo ejercicio">
+              + Añadir
+            </button>
+          </div>
+
+          <!-- Filtro de Grupo Muscular -->
+          <div class="filter-chips-scroll" id="catalog-filter-chips">
+            <button type="button" class="filter-chip active" data-filter="todos">Todos</button>
+            <button type="button" class="filter-chip" data-filter="pecho">Pecho</button>
+            <button type="button" class="filter-chip" data-filter="espalda">Espalda</button>
+            <button type="button" class="filter-chip" data-filter="piernas">Piernas</button>
+            <button type="button" class="filter-chip" data-filter="gluteos">Glúteos</button>
+            <button type="button" class="filter-chip" data-filter="hombros">Hombros</button>
+            <button type="button" class="filter-chip" data-filter="brazos">Brazos</button>
+            <button type="button" class="filter-chip" data-filter="core">Core</button>
+          </div>
+
+          <!-- Lista Maestra de Ejercicios -->
+          <div class="exercise-master-list" id="exercise-master-list">
+            <!-- Renderizado dinámico en app.js -->
+          </div>
+        </section>
+
+        <!-- PESTAÑA 3: PERFIL, TEMA, BACKUP & EXPORTACIÓN -->
+        <section id="view-perfil" class="view-section">
+          <div class="section-header-block">
+            <h2 class="section-title">Perfil & Ajustes</h2>
+            <p class="section-description">Personalización, apariencia y exportación de datos para IA.</p>
+          </div>
+          
+          <div class="profile-card">
+            <!-- Header Atleta -->
+            <div class="profile-preview-header">
+              <div id="profile-card-avatar" class="profile-large-avatar">🦍</div>
+              <div class="profile-preview-info">
+                <h3 id="profile-card-name" class="profile-display-name">Diego</h3>
+                <span class="profile-display-meta">Atleta Local • FitPulse Engine</span>
+              </div>
+            </div>
+
+            <!-- Selector de Atletas Rápidos (Diego / Alexandra) -->
+            <div class="form-group">
+              <label class="form-label">Atletas Predefinidos</label>
+              <div class="quick-athletes-row">
+                <button type="button" id="btn-perfil-diego" class="athlete-pill-btn active">
+                  <span class="athlete-emoji">🦍</span>
+                  <div class="athlete-meta">
+                    <strong>Diego</strong>
+                    <small>Tema Verde</small>
+                  </div>
+                </button>
+                <button type="button" id="btn-perfil-alexandra" class="athlete-pill-btn">
+                  <span class="athlete-emoji">🔥</span>
+                  <div class="athlete-meta">
+                    <strong>Alexandra</strong>
+                    <small>Tema Rosa</small>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Formulario Perfil Manual -->
+            <form id="form-perfil">
+              <div class="form-group">
+                <label for="input-perfil-nombre" class="form-label">Nombre Personalizado</label>
+                <input 
+                  type="text" 
+                  id="input-perfil-nombre" 
+                  class="input-ios" 
+                  placeholder="Tu nombre..." 
+                  maxlength="20"
+                  autocomplete="off" 
+                />
+              </div>
+
+              <!-- Selector de Emoji Avatar -->
+              <div class="form-group">
+                <label class="form-label">Emoji del Avatar</label>
+                <div class="avatar-emojis-row" id="avatar-emojis-selector">
+                  <!-- Inyectado por JS -->
+                </div>
+              </div>
+            </form>
+
+            <!-- Modo Claro / Oscuro -->
+            <div class="form-group">
+              <label class="form-label">Tema de Pantalla</label>
+              <div class="theme-mode-selector" id="theme-mode-selector">
+                <button type="button" class="theme-mode-btn" data-theme="auto">
+                  <span>🌓</span> Auto
+                </button>
+                <button type="button" class="theme-mode-btn" data-theme="claro">
+                  <span>☀️</span> Claro
+                </button>
+                <button type="button" class="theme-mode-btn" data-theme="oscuro">
+                  <span>🌙</span> Oscuro
+                </button>
+              </div>
+            </div>
+
+            <!-- Color de Acento CSS (:root) -->
+            <div class="form-group">
+              <label class="form-label">Color de Acento (--primary-color)</label>
+              <div class="color-swatches" id="color-swatches-container">
+                <!-- Swatches dinámicos -->
+              </div>
+            </div>
+
+            <!-- Estadísticas Acumuladas -->
+            <div class="profile-stats-box">
+              <div class="profile-stat-item">
+                <span class="stat-number" id="stat-sesiones-count">0</span>
+                <span class="stat-label">Sesiones</span>
+              </div>
+              <div class="profile-stat-item">
+                <span class="stat-number" id="stat-tonelaje-acumulado">0 t</span>
+                <span class="stat-label">Tonelaje Total</span>
+              </div>
+              <div class="profile-stat-item">
+                <span class="stat-number" id="stat-prs-count">0</span>
+                <span class="stat-label">PRs Logrados</span>
+              </div>
+            </div>
+
+            <!-- SECCIÓN: DIARIO DE ENTRENAMIENTOS (ACCESO A MODAL) -->
+            <section class="training-diary-section" id="section-training-diary">
+              <div class="diary-header-row">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-size: 20px;">📅</span>
+                  <div>
+                    <h4 class="diary-section-title">Últimos Entrenamientos</h4>
+                    <p class="diary-section-desc">Historial cronológico de sesiones completadas.</p>
+                  </div>
+                </div>
+                <span class="diary-count-badge" id="diary-sesiones-count">0</span>
+              </div>
+              <button type="button" id="btn-abrir-modal-historial" class="btn-data-action primary">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span>Abrir Historial Completo</span>
+              </button>
+            </section>
+
+            <!-- ZONA DE BACKUP & EXPORTACIÓN A IA -->
+            <div class="data-tools-section">
+              <h4 class="data-tools-title">Gestión de Datos & Exportación</h4>
+              <p class="data-tools-desc">Genera copias completas o exporta tus series para analizarlas en modelos de IA.</p>
+              
+              <div class="data-buttons-grid">
+                <!-- Exportar CSV para IA -->
+                <button type="button" id="btn-export-csv" class="btn-data-action primary">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Exportar Datos (CSV)</span>
+                </button>
+
+                <!-- Backup JSON -->
+                <button type="button" id="btn-backup-json" class="btn-data-action">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 8 8 12 12 16"></polyline>
+                    <line x1="16" y1="12" x2="8" y2="12"></line>
+                  </svg>
+                  <span>Backup JSON</span>
+                </button>
+
+                <!-- Restaurar JSON -->
+                <button type="button" id="btn-restore-json-trigger" class="btn-data-action">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 16 12 12 8 16"></polyline>
+                    <line x1="12" y1="12" x2="12" y2="21"></line>
+                    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+                  </svg>
+                  <span>Restaurar JSON</span>
+                </button>
+                <input type="file" id="file-restore-json" accept=".json" class="hidden" />
+              </div>
+            </div>
+
+            <button type="button" id="btn-reset-perfil" class="btn-secondary">
+              Restablecer Valores Iniciales
+            </button>
+          </div>
+        </section>
+
+        <!-- PESTAÑA 4: UI DE COMBATE (SESIÓN ACTIVA) -->
+        <section id="view-sesion" class="view-section">
+          <!-- Top bar de la sesión activa -->
+          <div class="combat-top-bar">
+            <button type="button" id="btn-minimizar-sesion" class="btn-back-combat" aria-label="Volver al inicio">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              <span>Inicio</span>
+            </button>
+
+            <!-- Cronómetro en vivo -->
+            <div class="combat-timer-pill" id="combat-chronometer">
+              <span class="timer-dot"></span>
+              <span id="chronometer-text">00:00</span>
+            </div>
+
+            <!-- Botón Terminar Sesión -->
+            <button type="button" id="btn-finalizar-sesion" class="btn-finish-combat">
+              Terminar
+            </button>
+          </div>
+
+          <!-- MODO DESCARGA (DELOAD) & SELECTOR DE EJERCICIO -->
+          <div class="combat-sub-bar">
+            <div class="deload-toggle-card">
+              <div class="deload-label-group">
+                <span class="deload-icon">⚡</span>
+                <div>
+                  <strong>Modo Descarga</strong>
+                  <small>(-20% Cargas)</small>
+                </div>
+              </div>
+              <label class="ios-switch" for="toggle-modo-descarga">
+                <input type="checkbox" id="toggle-modo-descarga" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Indicador de Flujo del Ejercicio en Curso (Sin dropdown) -->
+          <div class="combat-flow-header" id="combat-flow-header">
+            <div class="flow-step-info">
+              <span class="flow-step-label" id="combat-step-index">Ejercicio 1 de 4</span>
+              <div class="flow-dots" id="combat-flow-dots"></div>
+            </div>
+          </div>
+
+          <!-- TARJETA DE COMBATE DEL EJERCICIO -->
+          <article class="combat-card" id="combat-card">
+            
+            <div class="combat-card-header">
+              <div>
+                <span class="tag-badge" id="combat-exercise-tag">Pecho</span>
+                <h3 id="combat-exercise-name" class="combat-exercise-title">Press de Banca</h3>
+              </div>
+              <button type="button" id="btn-combat-ver-tecnica" class="btn-secondary-sm">
+                Ver Técnica
+              </button>
+            </div>
+
+            <!-- Ghost Reference Banner con modo descarga dinámico -->
+            <div class="ghost-reference-banner" id="combat-ghost-reference">
+              <span class="ghost-icon">💡</span>
+              <div class="ghost-text-col">
+                <span id="ghost-reference-text">Última vez: 80.0 kg x 8 reps</span>
+                <span class="ghost-mode-tag hidden" id="ghost-deload-tag">Modo Descarga (-20%) Activo</span>
+              </div>
+            </div>
+
+            <!-- BADGE DE PR OBTENIDO (Micro-animación) -->
+            <div id="badge-nuevo-pr" class="pr-achievement-badge hidden">
+              <span class="pr-star">🔥</span>
+              <span id="pr-badge-text">¡Nuevo PR Estimado! 1RM: 102.5 kg</span>
+            </div>
+
+            <!-- Formulario de Registro de Serie -->
+            <div class="set-input-panel">
+              <div class="panel-header-row">
+                <span class="set-badge-highlight" id="lbl-numero-serie">Serie 1</span>
+                <span class="autosave-tag" id="autosave-indicator">
+                  <span class="autosave-dot"></span>
+                  Autoguardado en LocalStorage
+                </span>
+              </div>
+
+              <!-- Fila: Peso (kg) con Steppers Grid Anti-Desbordamiento -->
+              <div class="input-control-block">
+                <div class="control-label-row">
+                  <label for="input-peso" class="control-label-text">Peso (kg)</label>
+                  <span class="ghost-hint" id="ghost-hint-peso">Últ: 80.0 kg</span>
+                </div>
+                <div class="stepper-grid-container">
+                  <button type="button" class="btn-stepper" data-target="input-peso" data-step="-2.5" aria-label="Restar 2.5 kg">-2.5</button>
+                  <input 
+                    type="number" 
+                    id="input-peso" 
+                    class="input-stepper" 
+                    placeholder="0" 
+                    step="0.5" 
+                    min="0" 
+                    pattern="[0-9]*" 
+                    inputmode="decimal" 
+                    autocomplete="off"
+                  />
+                  <button type="button" class="btn-stepper" data-target="input-peso" data-step="2.5" aria-label="Sumar 2.5 kg">+2.5</button>
+                </div>
+              </div>
+
+              <!-- Fila: Repeticiones con Steppers Grid Anti-Desbordamiento -->
+              <div class="input-control-block">
+                <div class="control-label-row">
+                  <label for="input-reps" class="control-label-text">Repeticiones</label>
+                  <span class="ghost-hint" id="ghost-hint-reps">Últ: 8 reps</span>
+                </div>
+                <div class="stepper-grid-container">
+                  <button type="button" class="btn-stepper" data-target="input-reps" data-step="-1" aria-label="Restar 1 repetición">-1</button>
+                  <input 
+                    type="number" 
+                    id="input-reps" 
+                    class="input-stepper" 
+                    placeholder="0" 
+                    step="1" 
+                    min="0" 
+                    pattern="[0-9]*" 
+                    inputmode="numeric" 
+                    autocomplete="off"
+                  />
+                  <button type="button" class="btn-stepper" data-target="input-reps" data-step="1" aria-label="Sumar 1 repetición">+1</button>
+                </div>
+              </div>
+
+              <!-- Fila: RIR y Toggle de Calentamiento -->
+              <div class="meta-controls-grid">
+                <!-- RIR Input pequeño -->
+                <div class="rir-control-box">
+                  <div class="rir-label-col">
+                    <span class="control-label-text">RIR</span>
+                    <span class="rir-hint">(En reserva)</span>
+                  </div>
+                  <input 
+                    type="number" 
+                    id="input-rir" 
+                    class="input-rir-box" 
+                    placeholder="2" 
+                    min="0" 
+                    max="10" 
+                    step="1" 
+                    pattern="[0-9]*" 
+                    inputmode="numeric"
+                  />
+                </div>
+
+                <!-- Toggle Calentamiento Estilo iOS -->
+                <div class="warmup-toggle-box">
+                  <span class="toggle-label-text">Calentamiento</span>
+                  <label class="ios-switch" for="toggle-calentamiento">
+                    <input type="checkbox" id="toggle-calentamiento" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Botón Registrar Serie Actual -->
+              <button type="button" id="btn-agregar-serie" class="btn-add-set">
+                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Registrar Serie</span>
+              </button>
+
+            </div>
+
+            <!-- Tabla de Series Registradas para este ejercicio -->
+            <div class="recorded-series-section">
+              <div class="series-table-header">
+                <span class="col-head">Serie</span>
+                <span class="col-head">Carga & Reps</span>
+                <span class="col-head">RIR</span>
+                <span class="col-head">Acción</span>
+              </div>
+              <div id="combat-series-list" class="recorded-series-list">
+                <!-- Filas de series inyectadas por JS -->
+              </div>
+            </div>
+
+            <!-- Resumen de Tonelaje Efectivo de la Sesión -->
+            <div class="live-tonnage-footer">
+              <div class="tonnage-stat">
+                <span class="tonnage-label">Tonelaje Efectivo</span>
+                <span class="tonnage-number" id="combat-live-tonnage">0 kg</span>
+              </div>
+              <div class="tonnage-stat">
+                <span class="tonnage-label">Series Efectivas</span>
+                <span class="tonnage-number" id="combat-effective-sets">0</span>
+              </div>
+            </div>
+
+          </article>
+
+          <!-- Fila de Navegación de Ejercicios (< Anterior / Siguiente > o Terminar Sesión) -->
+          <div class="combat-nav-row" id="combat-nav-row">
+            <button type="button" id="btn-ejercicio-anterior" class="btn-combat-nav prev" aria-label="Ejercicio anterior">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              <span>Anterior</span>
+            </button>
+            <div class="combat-nav-position">
+              <span id="combat-nav-counter">1 / 4</span>
+            </div>
+            <button type="button" id="btn-ejercicio-siguiente" class="btn-combat-nav next" aria-label="Siguiente ejercicio">
+              <span>Siguiente</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+            <button type="button" id="btn-ejercicio-terminar" class="btn-combat-nav finish hidden" aria-label="Terminar sesión">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Terminar Sesión</span>
+            </button>
+          </div>
+
+          <!-- Botón de descarte seguro -->
+          <div class="combat-footer-actions">
+            <button type="button" id="btn-cancelar-sesion" class="btn-text-danger">
+              Descartar Entrenamiento
+            </button>
+          </div>
+
+        </section>
+
+      </main>
+
+      <!-- Cronómetro Flotante de Descanso (90s) -->
+      <div id="rest-timer-floating" class="rest-timer-floating hidden" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1c1c1e;border:1px solid rgba(255,255,255,0.15);border-radius:9999px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:9999;box-shadow:0 8px 30px rgba(0,0,0,0.6);color:#fff;">
+        <span style="font-size:18px;">⏱️</span>
+        <div style="display:flex;flex-direction:column;line-height:1.2;">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#8e8e93;font-weight:600;">Descanso</span>
+          <span id="rest-timer-display" style="font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--primary-color,#34c759);">01:30</span>
+        </div>
+        <button type="button" id="btn-cerrar-rest-timer" style="background:none;border:none;color:#8e8e93;font-size:15px;cursor:pointer;padding:4px 6px;margin-left:4px;" aria-label="Cerrar temporizador">✕</button>
+      </div>
+
+      <!-- 3. Bottom Nav Bar (Fija estilo iOS con 3 botones principales) -->
+      <nav class="bottom-nav" aria-label="Navegación principal">
+        <!-- Botón 1: Inicio -->
+        <button type="button" class="nav-tab-item active" data-tab="inicio" aria-label="Ir a Inicio">
+          <div class="nav-icon-wrapper">
+            <svg viewBox="0 0 24 24">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+          </div>
+          <span class="nav-tab-label">Inicio</span>
+        </button>
+
+        <!-- Botón 2: Catálogo -->
+        <button type="button" class="nav-tab-item" data-tab="catalogo" aria-label="Ir a Catálogo">
+          <div class="nav-icon-wrapper">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+            </svg>
+          </div>
+          <span class="nav-tab-label">Catálogo</span>
+        </button>
+
+        <!-- Botón 3: Perfil -->
+        <button type="button" class="nav-tab-item" data-tab="perfil" aria-label="Ir a Perfil">
+          <div class="nav-icon-wrapper">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          </div>
+          <span class="nav-tab-label">Perfil</span>
+        </button>
+      </nav>
+
+    </div>
+
+    <!-- MODAL 1: CONSTRUCTOR DE PERIODIZACIÓN / BLOQUE DE ENTRENAMIENTO -->
+    <div id="modal-periodizacion" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-sheet modal-sheet-tall">
+        <div class="modal-grabber"></div>
+        <div class="modal-header">
+          <div class="modal-title-col">
+            <span class="modal-category-badge">Periodización & Mesociclos</span>
+            <h3 class="modal-exercise-title">Constructor de Bloque</h3>
+          </div>
+          <button type="button" id="btn-cerrar-modal-periodizacion" class="modal-close-btn" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <form id="form-bloque-periodizacion" class="periodization-form">
+            <div class="form-group">
+              <label for="input-bloque-nombre" class="form-label">Nombre del Programa</label>
+              <input 
+                type="text" 
+                id="input-bloque-nombre" 
+                class="input-ios" 
+                placeholder="Ej: Mesociclo Hipertrofia 1" 
+                required 
+              />
+            </div>
+
+            <div class="form-grid-2cols">
+              <div class="form-group">
+                <label for="input-bloque-fecha-inicio" class="form-label">Fecha Inicio</label>
+                <input type="date" id="input-bloque-fecha-inicio" class="input-ios" required />
+              </div>
+              <div class="form-group">
+                <label for="input-bloque-fecha-fin" class="form-label">Fecha Fin</label>
+                <input type="date" id="input-bloque-fecha-fin" class="input-ios" required />
+              </div>
+            </div>
+
+            <!-- Asignación por Días de la Semana (0-6) -->
+            <div class="form-group">
+              <label class="form-label">Programación Semanal</label>
+              <div class="days-selector-tabs" id="days-selector-tabs">
+                <button type="button" class="day-tab active" data-day="1">Lun</button>
+                <button type="button" class="day-tab" data-day="2">Mar</button>
+                <button type="button" class="day-tab" data-day="3">Mié</button>
+                <button type="button" class="day-tab" data-day="4">Jue</button>
+                <button type="button" class="day-tab" data-day="5">Vie</button>
+                <button type="button" class="day-tab" data-day="6">Sáb</button>
+                <button type="button" class="day-tab" data-day="0">Dom</button>
+              </div>
+            </div>
+
+            <!-- Configuración del Día Seleccionado -->
+            <div class="day-config-card" id="day-config-container">
+              <div class="day-config-header">
+                <div>
+                  <h4 id="lbl-nombre-dia-activo">Lunes</h4>
+                  <small id="lbl-estado-dia-activo">Día de Entrenamiento</small>
+                </div>
+                <button type="button" id="btn-toggle-descanso-dia" class="btn-secondary-sm">
+                  Descanso
+                </button>
+              </div>
+
+              <!-- Título de la sesión del día -->
+              <div class="form-group" id="seccion-titulo-dia">
+                <label for="input-dia-titulo" class="form-label">Nombre de la Sesión</label>
+                <input type="text" id="input-dia-titulo" class="input-ios" placeholder="Ej: Torso A, Piernas..." />
+              </div>
+
+              <!-- Ejercicios asignados al día -->
+              <div class="assigned-exercises-section" id="seccion-ejercicios-dia">
+                <div class="section-sub-header">
+                  <span class="sub-label">Ejercicios Asignados</span>
+                  <button type="button" id="btn-abrir-selector-ejercicios-dia" class="btn-text-action">
+                    + Añadir Ejercicio
+                  </button>
+                </div>
+                <div id="lista-ejercicios-dia" class="day-exercises-list">
+                  <!-- Renderizado dinámico -->
+                </div>
+              </div>
+
+            </div>
+
+            <div class="modal-footer">
+              <button type="submit" class="btn-primary-giant">
+                Guardar Programa en LocalStorage
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: AÑADIR NUEVO EJERCICIO AL CATÁLOGO -->
+    <div id="modal-nuevo-ejercicio" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-sheet">
+        <div class="modal-grabber"></div>
+        <div class="modal-header">
+          <div class="modal-title-col">
+            <span class="modal-category-badge">Biblioteca</span>
+            <h3 class="modal-exercise-title">Crear Nuevo Ejercicio</h3>
+          </div>
+          <button type="button" id="btn-cerrar-modal-nuevo-ej" class="modal-close-btn" aria-label="Cerrar">✕</button>
+        </div>
+
+        <form id="form-nuevo-ejercicio" class="modal-body">
+          <div class="form-group">
+            <label for="input-nuevo-ej-nombre" class="form-label">Nombre del Ejercicio</label>
+            <input 
+              type="text" 
+              id="input-nuevo-ej-nombre" 
+              class="input-ios" 
+              placeholder="Ej: Press Francés con Barra" 
+              required 
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="select-nuevo-ej-categoria" class="form-label">Grupo Muscular</label>
+            <select id="select-nuevo-ej-categoria" class="input-ios" required>
+              <option value="pecho">Pecho</option>
+              <option value="espalda">Espalda</option>
+              <option value="piernas">Piernas</option>
+              <option value="gluteos">Glúteos</option>
+              <option value="hombros">Hombros</option>
+              <option value="brazos">Brazos</option>
+              <option value="core">Core</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-nuevo-ej-peso-ref" class="form-label">Peso Inicial de Referencia (kg)</label>
+            <input 
+              type="number" 
+              id="input-nuevo-ej-peso-ref" 
+              class="input-ios" 
+              placeholder="Ej: 20" 
+              step="0.5" 
+              min="0" 
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="input-nuevo-ej-reps-ref" class="form-label">Repeticiones Objetivo</label>
+            <input 
+              type="number" 
+              id="input-nuevo-ej-reps-ref" 
+              class="input-ios" 
+              placeholder="Ej: 10" 
+              min="1" 
+            />
+          </div>
+
+          <div class="modal-footer">
+            <button type="submit" class="btn-primary-giant">
+              Guardar Ejercicio en el Catálogo
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 3: SELECTOR DE EJERCICIOS PARA EL DÍA -->
+    <div id="modal-selector-catalogo" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-sheet">
+        <div class="modal-grabber"></div>
+        <div class="modal-header">
+          <div class="modal-title-col">
+            <span class="modal-category-badge">Seleccionar</span>
+            <h3 class="modal-exercise-title">Añadir al Día</h3>
+          </div>
+          <button type="button" id="btn-cerrar-modal-selector" class="modal-close-btn" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <input 
+            type="search" 
+            id="input-buscar-ejercicio-selector" 
+            class="input-ios" 
+            placeholder="Buscar ejercicio en la biblioteca..." 
+          />
+          <div id="lista-opciones-ejercicios" class="picker-exercises-list">
+            <!-- Inyectado por JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: VER TÉCNICA (Apple Style Sheet) -->
+    <div id="modal-tecnica" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-sheet">
+        <div class="modal-grabber"></div>
+        <div class="modal-header">
+          <div class="modal-title-col">
+            <span class="modal-category-badge" id="modal-ejercicio-cat">Biomecánica</span>
+            <h3 id="modal-ejercicio-nombre" class="modal-exercise-title">Press de Banca</h3>
+          </div>
+          <button type="button" id="btn-cerrar-modal" class="modal-close-btn" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="technique-meta-grid">
+            <div class="meta-tag-card">
+              <span class="meta-card-label">Músculo Principal</span>
+              <strong id="modal-musculo-principal" class="meta-card-value">Pectoral Mayor</strong>
+            </div>
+            <div class="meta-tag-card">
+              <span class="meta-card-label">Récord 1RM Estimado</span>
+              <strong id="modal-1rm-record" class="meta-card-value">-- kg</strong>
+            </div>
+          </div>
+
+          <div class="technique-section">
+            <h4 class="technique-heading">Paso a Paso de Ejecución</h4>
+            <ol id="modal-pasos-lista" class="technique-step-list">
+              <!-- Inyectado por JS -->
+            </ol>
+          </div>
+
+          <div class="technique-section">
+            <h4 class="technique-heading">Claves Biomecánicas & Seguridad</h4>
+            <ul id="modal-claves-lista" class="technique-tips-list">
+              <!-- Inyectado por JS -->
+            </ul>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-modal-entrenar-ahora" class="btn-primary-giant">
+            <span>Entrenar este Ejercicio</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 5: PANTALLA DE VICTORIA (RESUMEN DE SESIÓN) -->
+    <div id="modal-victoria" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-sheet victory-sheet">
+        <div class="victory-confetti-circle">🏆</div>
+        
+        <h3 class="victory-title">¡Entrenamiento Completado!</h3>
+        <p class="victory-subtitle" id="victory-routine-name">Sesión registrada con éxito</p>
+
+        <div class="victory-stats-grid">
+          <div class="victory-stat-card">
+            <span class="v-label">Tonelaje Efectivo</span>
+            <strong class="v-value" id="victory-tonnage">0 kg</strong>
+            <small class="v-note">Excluye calentamiento</small>
+          </div>
+          <div class="victory-stat-card">
+            <span class="v-label">Tiempo Total</span>
+            <strong class="v-value" id="victory-duration">0 min</strong>
+            <small class="v-note">Duración activa</small>
+          </div>
+          <div class="victory-stat-card">
+            <span class="v-label">Series Efectivas</span>
+            <strong class="v-value" id="victory-sets">0</strong>
+            <small class="v-note">Completadas</small>
+          </div>
+          <div class="victory-stat-card">
+            <span class="v-label">Nuevos PRs</span>
+            <strong class="v-value" id="victory-prs">0</strong>
+            <small class="v-note">Récords 1RM</small>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cerrar-victoria" class="btn-primary-giant">
+            Continuar al Inicio
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 6: HISTORIAL DE ENTRENAMIENTO -->
+    <div id="modal-historial" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-sheet modal-sheet-tall">
+        <div class="modal-grabber"></div>
+        <div class="modal-header">
+          <div class="modal-title-col">
+            <span class="modal-category-badge">Diario de Sesiones</span>
+            <h3 class="modal-exercise-title">Historial de Entrenamiento</h3>
+          </div>
+          <button type="button" id="btn-cerrar-modal-historial" class="modal-close-btn" aria-label="Cerrar">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="diary-sessions-list" id="diary-sessions-list">
+            <!-- Tarjetas acordeón inyectadas por JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pure Native JavaScript Entry Point -->
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
