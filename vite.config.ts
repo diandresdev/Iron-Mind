@@ -1,18 +1,17 @@
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
+        // Arquitectura ESM moderna: reemplaza a __dirname
+        '@': path.resolve(import.meta.dirname, '.'),
+      }
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: process.env.DISABLE_HMR === 'true' ? false : true,
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-    },
+    }
   };
 });
-
