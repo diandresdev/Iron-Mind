@@ -190,6 +190,12 @@ const CATALOGO_SEMILLA_CIENTIFICO = [
   }
 ];
 
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+        .then(() => console.log("Service Worker activado."))
+        .catch(error => console.log("Falló el registro:", error));
+}
+
 // ==========================================================================
 // 2. LocalStorage Helpers
 // ==========================================================================
